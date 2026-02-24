@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One Piece Photobooth</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial}
+
+body{
+  min-height:100vh;
+  background:url("https://i.postimg.cc/sgfTtG11/monkey-d-luffy-3840x2160-16712.jpg") center/cover no-repeat;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.6);
+  z-index:-1;
+}
+
+.container{
+  width:95%;
+  max-width:900px;
+  background:rgba(255,255,255,.08);
+  backdrop-filter:blur(15px);
+  border-radius:20px;
+  padding:20px;
+  color:#fff;
+  text-align:center;
+}
+
+h2{margin-bottom:15px}
+
+video{
+  width:100%;
+  max-width:420px;
+  border-radius:15px;
+  border:2px solid gold;
+  transform:scaleX(-1);
+}
+
+.countdown{
+  font-size:60px;
+  font-weight:bold;
+  margin:10px 0;
+  height:70px;
+}
+
+.top-controls{
+  display:flex;
+  justify-content:center;
+  gap:15px;
+  flex-wrap:wrap;
+  margin:15px 0;
+}
+
+.dropdown{position:relative;width:200px;}
+
+.dropdown-btn{
+  background:white;
+  color:black;
+  padding:10px;
+  border-radius:12px;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-weight:bold;
+}
+
+.dropdown-menu{
+  position:absolute;
+  top:110%;
+  width:100%;
+  background:#eee;
+  border-radius:12px;
+  padding:10px;
+  display:none;
+  z-index:10;
+}
+
+.layout-item{
+  padding:8px;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+.layout-item:hover{background:#ddd;}
+.layout-item.active{background:#ccc;}
+
+button{
+  padding:8px 12px;
+  border:none;
+  border-radius:8px;
+  background:gold;
+  font-weight:bold;
+  cursor:pointer;
+  margin-top:10px;
+}
+
+#sidePreview{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  margin-top:15px;
+  flex-wrap:wrap;
+}
+
+#sidePreview img{
+  width:70px;
+  height:90px;
+  object-fit:cover;
+  border-radius:8px;
+  border:2px solid white;
+}
+
+/* ===== Editor ===== */
+
+#editorPage{
+  display:none;
+  width:95%;
+  max-width:1200px;
+  background:#f6d9df;
+  padding:40px;
+  border-radius:20px;
+  color:#000;
+  text-align:center;
+}
+
+#stickerPanel{
+  margin-top:20px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  justify-content:center;
+}
+
+#stickerPanel img{
+  width:70px;
+  cursor:pointer;
+  border-radius:8px;
+  transition:.2s;
+}
+
+#stickerPanel img:hover{
+  transform:scale(1.1);
+}
+</style>
+</head>
+<body>
+
+<div class="container" id="mainPage">
+<h2>🏴‍☠️ One Piece Photobooth</h2>
+
+<video id="video" autoplay playsinline muted></video>
+<div class="countdown" id="countdown"></div>
+
+<div id="sidePreview"></div>
+
+<div class="top-controls">
+  <div class="dropdown">
+    <div class="dropdown-btn" onclick="toggleDropdown()">
+      <span id="selectedText">2 รูปภาพ</span> ▼
+    </div>
+    <div class="dropdown-menu" id="dropdownMenu">
+      <div class="layout-item active" data-count="2">2 รูปภาพ</div>
+      <div class="layout-item" data-count="3">3 รูปภาพ</div>
+      <div class="layout-item" data-count="4">4 รูปภาพ</div>
+      <div class="layout-item" data-count="6">6 รูปภาพ</div>
+      <div class="layout-item" data-count="8">8 รูปภาพ</div>
+    </div>
+  </div>
+</div>
+
+<button onclick="startShooting()">เริ่มถ่าย</button>
+<button onclick="openEditor()">ตกแต่ง</button>
+</div>
+
+<!-- ===== Editor Page ===== -->
+<div id="editorPage">
+  <h2>ตกแต่งรูป</h2>
+  <canvas id="editCanvas"></canvas>
+  <br><br>
+
+  <button onclick="changeFrame('#ffffff')">ขาว</button>
+  <button onclick="changeFrame('#000000')">ดำ</button>
+  <button onclick="changeFrame('#ffb6c1')">ชมพู</button>
+  <br><br>
+
+  <input type="color" id="colorPicker" value="#ffffff">
+  <input type="text" id="hexInput" value="#ffffff" style="padding:5px;width:90px;">
+
+  <div id="stickerPanel"></div>
+
+  <br>
+  <button onclick="downloadEdit()">ดาวน์โหลด</button>
+  <button onclick="closeEditor()">กลับ</button>
+</div>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script>
+const video=document.getElementById("video");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const countdownEl=document.getElementById("countdown");
+const sidePreview=document.getElementById("sidePreview");
+
+let photoCount=2;
+let photos=[];
+let delay=3;
+
+navigator.mediaDevices.getUserMedia({video:true})
+.then(stream=>video.srcObject=stream);
+
+/* ===== Dropdown ===== */
+
+function toggleDropdown(){
+  const menu=document.getElementById("dropdownMenu");
+  menu.style.display=menu.style.display==="block"?"none":"block";
+}
+
+document.querySelectorAll(".layout-item").forEach(item=>{
+  item.onclick=()=>{
+    document.querySelectorAll(".layout-item").forEach(i=>i.classList.remove("active"));
+    item.classList.add("active");
+    photoCount=parseInt(item.dataset.count);
+    document.getElementById("selectedText").innerText=photoCount+" รูปภาพ";
+    document.getElementById("dropdownMenu").style.display="none";
+    photos=[];
+    sidePreview.innerHTML="";
+  }
+});
+
+/* ===== ถ่าย ===== */
+
+function countdown(sec){
+  return new Promise(resolve=>{
+    let current=sec;
+    countdownEl.textContent=current;
+    const timer=setInterval(()=>{
+      current--;
+      if(current>0){countdownEl.textContent=current;}
+      else{clearInterval(timer);countdownEl.textContent="";resolve();}
+    },1000);
+  });
+}
+
+async function startShooting(){
+  photos=[];
+  sidePreview.innerHTML="";
+  for(let i=0;i<photoCount;i++){
+    await countdown(delay);
+    takePhoto();
+  }
+}
+
+function takePhoto(){
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.translate(canvas.width,0);
+  ctx.scale(-1,1);
+  ctx.drawImage(video,0,0);
+  photos.push(canvas.toDataURL("image/png"));
+  renderPreview();
+}
+
+function renderPreview(){
+  sidePreview.innerHTML="";
+  photos.forEach(p=>{
+    const img=document.createElement("img");
+    img.src=p;
+    sidePreview.appendChild(img);
+  });
+}
+
+/* ===== Editor ===== */
+
+const editCanvas=document.getElementById("editCanvas");
+const ectx=editCanvas.getContext("2d");
+
+let frameColor="#ffffff";
+let currentSticker=null;
+
+function openEditor(){
+  if(photos.length===0){alert("ถ่ายก่อน");return;}
+  document.getElementById("mainPage").style.display="none";
+  document.getElementById("editorPage").style.display="block";
+  drawEditor();
+}
+
+function closeEditor(){
+  document.getElementById("editorPage").style.display="none";
+  document.getElementById("mainPage").style.display="block";
+}
+
+function drawEditor(){
+  const size=400;
+  const ratio=video.videoHeight/video.videoWidth;
+  const h=size*ratio;
+  const gap=20;
+  const watermark=70;
+
+  editCanvas.width=size+gap*2;
+  editCanvas.height=(h*photos.length)+(gap*(photos.length+1))+watermark;
+
+  ectx.fillStyle=frameColor;
+  ectx.fillRect(0,0,editCanvas.width,editCanvas.height);
+
+  let loaded=0;
+
+  photos.forEach((p,i)=>{
+    const img=new Image();
+    img.onload=()=>{
+      ectx.drawImage(img,gap,gap+(i*(h+gap)),size,h);
+      loaded++;
+
+      if(loaded===photos.length){
+        ectx.font="20px Arial";
+        ectx.fillStyle="rgba(0,0,0,0.6)";
+        ectx.textAlign="center";
+        ectx.fillText("One Piece Photobooth",editCanvas.width/2,editCanvas.height-30);
+
+        if(currentSticker){drawSticker(currentSticker);}
+      }
+    };
+    img.src=p;
+  });
+}
+
+function changeFrame(color){
+  frameColor=color;
+  document.getElementById("colorPicker").value=color;
+  document.getElementById("hexInput").value=color;
+  drawEditor();
+}
+
+document.getElementById("colorPicker").addEventListener("input",e=>{
+  changeFrame(e.target.value);
+});
+
+document.getElementById("hexInput").addEventListener("change",function(){
+  changeFrame(this.value);
+});
+
+function downloadEdit(){
+  const link=document.createElement("a");
+  link.download="edited.png";
+  link.href=editCanvas.toDataURL("image/png");
+  link.click();
+}
+
+/* ===== Sticker ===== */
+
+const stickerList=[
+"https://i.postimg.cc/bNfCRNb8/pngegg-(11).png",
+"https://i.postimg.cc/zGJx9t00/pngegg-(10).png",
+"https://i.postimg.cc/7ZmKD3Rk/pngegg-(9).png",
+"https://i.postimg.cc/zfQpHJ5S/pngegg-(8).png",
+"https://i.postimg.cc/Y9mR1JCq/pngegg-(7).png",
+"https://i.postimg.cc/0jRfZczG/pngegg-(6).png",
+"https://i.postimg.cc/gc84rF70/pngegg-(5).png",
+"https://i.postimg.cc/4NGP92CQ/pngegg-(4).png",
+"https://i.postimg.cc/MKYDb0qc/pngegg-(3).png",
+"https://i.postimg.cc/dVt9W7Vj/pngegg-(2).png",
+"https://i.postimg.cc/NjJkZgyY/pngegg-(1).png",
+"https://i.postimg.cc/q7NxT9nM/pngegg.png",
+"https://i.postimg.cc/FKwgsDgj/pngegg-(1).png",
+"https://i.postimg.cc/xdByTtyB/pngegg-(2).png",
+"https://i.postimg.cc/j5N6WPMs/pngegg-(3).png",
+"https://i.postimg.cc/j2bHy21Z/pngegg-(4).png",
+"https://i.postimg.cc/wxXcg5tw/pngegg-(5).png",
+"https://i.postimg.cc/VL4qbYWj/pngegg-(6).png",
+"https://i.postimg.cc/RZFc7jgs/pngegg-(7).png",
+"https://i.postimg.cc/2SKn22Jr/pngegg-(8).png",
+"https://i.postimg.cc/0Qpm5xNQ/pngegg.png",
+"https://i.postimg.cc/5N9vJhdG/sticker-2.png"
+];
+
+const stickerPanel=document.getElementById("stickerPanel");
+
+stickerList.forEach(src=>{
+  const img=document.createElement("img");
+  img.src=src;
+  img.onclick=()=>{
+    currentSticker=src;
+    drawEditor();
+  };
+  stickerPanel.appendChild(img);
+});
+
+function drawSticker(src){
+  const sticker=new Image();
+  sticker.crossOrigin="anonymous";
+  sticker.onload=function(){
+    const size=120;
+    const positions=[
+      {x:20,y:20},
+      {x:editCanvas.width-size-20,y:20},
+      {x:20,y:editCanvas.height-size-80},
+      {x:editCanvas.width-size-20,y:editCanvas.height-size-80}
+    ];
+    const pos=positions[Math.floor(Math.random()*positions.length)];
+    ectx.drawImage(sticker,pos.x,pos.y,size,size);
+  };
+  sticker.src=src;
+}
+</script>
+
+</body>
+</html>
